@@ -1,0 +1,9 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    environment:
+      NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-}
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
