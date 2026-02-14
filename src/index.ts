@@ -1,7 +1,16 @@
 import { Telegraf } from "telegraf";
 import { loadConfig, type Locale } from "./config";
 import { t } from "./i18n";
-import { initDb, getUser, listUsers, upsertUser, getNotificationState, upsertNotificationState, setLocale } from "./db";
+import {
+  getProfileByOutlineId,
+  getStatusByTelegramId,
+  initDb,
+  linkTelegramToOutline,
+  listLinkedUsageRows,
+  refreshOutlineCache,
+  setLocaleByTelegramId,
+  type LinkedUsageRow
+} from "./db";
 import { OutlineClient } from "./outline";
 import { createLogger } from "./logger";
 
@@ -19,32 +28,132 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(2)} ${units[i]}`;
 }
 
-function detectLocale(langCode?: string): Locale {
-  if (!langCode) return "en";
+function detectLocale(langCode?: string): Locale | null {
+  if (!langCode) return null;
   const normalized = langCode.toLowerCase();
   return normalized.startsWith("ru") ? "ru" : "en";
 }
 
-function resolveLocale(langCode: string | undefined, stored: Locale | undefined): Locale {
+function resolveLocale(
+  langCode: string | undefined,
+  stored: Locale | null | undefined,
+  defaultLocale: Locale,
+  hasLinkedRow: boolean
+): Locale {
   if (stored) return stored;
-  return detectLocale(langCode);
+  const detected = detectLocale(langCode);
+  if (detected) return detected;
+  return hasLinkedRow ? defaultLocale : "en";
 }
 
-const WARNING_THRESHOLDS = [50, 60, 70, 80, 90, 100];
+function resolveStoredLocale(stored: Locale | null | undefined, fallback: Locale): Locale {
+  return stored || fallback;
+}
 
-async function getUsageMessage(outline: OutlineClient, accessKeyId: string, locale: Locale): Promise<string> {
-  const key = await outline.getAccessKey(accessKeyId);
-  const usedBytes = await outline.getUsageBytes(accessKeyId);
-  const limitBytes = key.dataLimit?.bytes;
+const WARNING_THRESHOLDS = [50, 60, 70, 80, 90];
+
+function formatUpdatedAt(value: string, locale: Locale): string {
+  const date = new Date(value.endsWith("Z") ? value : `${value}Z`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(locale === "ru" ? "ru-RU" : "en-US");
+}
+
+function intervalMinutes(checkIntervalMs: number): number {
+  return Math.max(1, Math.round(checkIntervalMs / 60000));
+}
+
+function getUsageMessageFromCache(
+  locale: Locale,
+  usedBytes: number,
+  limitBytes: number | null,
+  updatedAt: string,
+  checkIntervalMs: number
+): string {
+  const refreshRateText = t(locale, "statusRefreshRate", { minutes: intervalMinutes(checkIntervalMs) });
   if (!limitBytes || limitBytes <= 0) {
-    return t(locale, "statusUsedNoLimit", { used: formatBytes(usedBytes) });
+    return `${t(locale, "statusUsedNoLimit", { used: formatBytes(usedBytes) })}\n${t(locale, "statusAsOf", {
+      updatedAt: formatUpdatedAt(updatedAt, locale)
+    })}\n${refreshRateText}`;
   }
+
   const percent = ((usedBytes / limitBytes) * 100).toFixed(1);
-  return t(locale, "statusOk", {
+  return `${t(locale, "statusOk", {
     used: formatBytes(usedBytes),
     limit: formatBytes(limitBytes),
     percent
+  })}\n${t(locale, "statusAsOf", { updatedAt: formatUpdatedAt(updatedAt, locale) })}\n${refreshRateText}`;
+}
+
+async function syncOutlineSnapshot(
+  outline: OutlineClient,
+  db: ReturnType<typeof initDb>,
+  logger: ReturnType<typeof createLogger>,
+  defaultLocale: Locale,
+  bot?: Telegraf
+): Promise<void> {
+  const linkedRows: LinkedUsageRow[] = listLinkedUsageRows(db);
+  const previousByOutlineId: Map<string, LinkedUsageRow> = new Map(
+    linkedRows.map((row: LinkedUsageRow): [string, LinkedUsageRow] => [row.outlineId, row])
+  );
+
+  const keys = await outline.listAccessKeys();
+  const transferMap = await outline.getTransferMap();
+
+  const snapshot = keys.map((key) => {
+    const usedBytes = typeof transferMap[key.id] === "number" ? transferMap[key.id] : 0;
+    const limitBytes = key.dataLimit?.bytes ?? null;
+    const percentUsed = limitBytes && limitBytes > 0 ? (usedBytes / limitBytes) * 100 : 0;
+    return {
+      outlineId: key.id,
+      limitBytes,
+      usedBytes,
+      percentUsed
+    };
   });
+
+  refreshOutlineCache(db, snapshot);
+
+  if (!bot) return;
+
+  for (const row of snapshot) {
+    const prev: LinkedUsageRow | undefined = previousByOutlineId.get(row.outlineId);
+    if (!prev) continue;
+    if (!row.limitBytes || row.limitBytes <= 0) continue;
+
+    const locale = resolveStoredLocale(prev.locale, defaultLocale);
+    for (const threshold of WARNING_THRESHOLDS) {
+      const crossed = prev.percentUsed < threshold && row.percentUsed >= threshold;
+      if (crossed) {
+        try {
+          const warningKey = threshold >= 80 ? "warnHigh" : "warn";
+          await bot.telegram.sendMessage(prev.telegramId, t(locale, warningKey, { percent: threshold }));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          logger.error("Warning send failed", { telegramId: prev.telegramId, threshold, error: message });
+        }
+      }
+    }
+
+    const crossedToBlocked = prev.percentUsed < 100 && row.percentUsed >= 100;
+    if (crossedToBlocked) {
+      try {
+        await bot.telegram.sendMessage(prev.telegramId, t(locale, "vpnBlocked"));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error("Blocked notification failed", { telegramId: prev.telegramId, error: message });
+      }
+    }
+
+    const restoredBelowLimit = prev.percentUsed >= 100 && row.percentUsed < 100;
+    if (restoredBelowLimit) {
+      try {
+        await bot.telegram.sendMessage(prev.telegramId, t(locale, "vpnRestored"));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error("Restored notification failed", { telegramId: prev.telegramId, error: message });
+      }
+    }
+  }
 }
 
 async function main(): Promise<void> {
@@ -56,23 +165,38 @@ async function main(): Promise<void> {
 
   const bot = new Telegraf(config.botToken);
 
+  try {
+    await syncOutlineSnapshot(outline, db, logger, config.defaultLocale);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error("Initial snapshot sync failed", { error: message });
+  }
+
   bot.start(async (ctx) => {
-    const user = getUser(db, ctx.from.id);
-    const locale = resolveLocale(ctx.from?.language_code, user?.locale);
+    const user = getStatusByTelegramId(db, ctx.from.id);
+    const locale = resolveLocale(ctx.from?.language_code, user?.locale, config.defaultLocale, Boolean(user));
     await ctx.reply(t(locale, "welcome"));
     await ctx.reply(t(locale, "help"));
     await ctx.reply(t(locale, "helpDetails"));
   });
 
   bot.command("status", async (ctx) => {
-    const user = getUser(db, ctx.from.id);
-    const locale = resolveLocale(ctx.from?.language_code, user?.locale);
-    if (!user || !user.accessKeyId) {
-      await ctx.reply(t(locale, "statusNoKey"));
-      return;
-    }
+    let user = getStatusByTelegramId(db, ctx.from.id);
+    const locale = resolveLocale(ctx.from?.language_code, user?.locale, config.defaultLocale, Boolean(user));
+
     try {
-      const msg = await getUsageMessage(outline, user.accessKeyId, locale);
+      if (!user) {
+        await syncOutlineSnapshot(outline, db, logger, config.defaultLocale);
+        user = getStatusByTelegramId(db, ctx.from.id);
+      }
+
+      if (!user) {
+        await ctx.reply(t(locale, "statusNoKey"));
+        return;
+      }
+
+      const usedBytes = user.usedBytes ?? 0;
+      const msg = getUsageMessageFromCache(locale, usedBytes, user.limitBytes, user.updatedAt, config.checkIntervalMs);
       await ctx.reply(msg);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -85,25 +209,26 @@ async function main(): Promise<void> {
     const parts = ctx.message.text.trim().split(/\s+/);
     const lang = parts[1] as Locale | undefined;
     const locale = lang === "en" ? "en" : "ru";
-    const user = getUser(db, ctx.from.id);
-    if (user) {
-      setLocale(db, ctx.from.id, locale);
-    } else {
-      upsertUser(db, ctx.from.id, "", locale);
+    const user = getStatusByTelegramId(db, ctx.from.id);
+    if (!user) {
+      await ctx.reply(t(locale, "statusNoKey"));
+      return;
     }
+
+    setLocaleByTelegramId(db, ctx.from.id, locale);
     await ctx.reply(t(locale, "langSet", { lang: locale }));
   });
 
   bot.command("help", async (ctx) => {
-    const user = getUser(db, ctx.from.id);
-    const locale = resolveLocale(ctx.from?.language_code, user?.locale);
+    const user = getStatusByTelegramId(db, ctx.from.id);
+    const locale = resolveLocale(ctx.from?.language_code, user?.locale, config.defaultLocale, Boolean(user));
     await ctx.reply(t(locale, "helpDetails"));
   });
 
   bot.on("text", async (ctx) => {
     const text = ctx.message.text.trim();
-    const user = getUser(db, ctx.from.id);
-    const locale = resolveLocale(ctx.from?.language_code, user?.locale);
+    const user = getStatusByTelegramId(db, ctx.from.id);
+    const locale = resolveLocale(ctx.from?.language_code, user?.locale, config.defaultLocale, Boolean(user));
 
     if (!text.startsWith("ss://")) {
       await ctx.reply(t(locale, "help"));
@@ -116,7 +241,19 @@ async function main(): Promise<void> {
         await ctx.reply(t(locale, "outlineNoMatch"));
         return;
       }
-      upsertUser(db, ctx.from.id, accessKeyId, locale);
+
+      let keyRow = getProfileByOutlineId(db, accessKeyId);
+      if (!keyRow) {
+        await syncOutlineSnapshot(outline, db, logger, config.defaultLocale);
+        keyRow = getProfileByOutlineId(db, accessKeyId);
+      }
+
+      if (!keyRow) {
+        await ctx.reply(t(locale, "outlineNoMatch"));
+        return;
+      }
+
+      linkTelegramToOutline(db, accessKeyId, ctx.from.id, locale);
       await ctx.reply(t(locale, "keyLinked"));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -126,28 +263,21 @@ async function main(): Promise<void> {
   });
 
   const interval = config.checkIntervalMs;
+  let pollInProgress = false;
   setInterval(async () => {
-    const users = listUsers(db);
-    for (const user of users) {
-      if (!user.accessKeyId) continue;
-      try {
-        const key = await outline.getAccessKey(user.accessKeyId);
-        const limitBytes = key.dataLimit?.bytes;
-        if (!limitBytes || limitBytes <= 0) continue;
+    if (pollInProgress) {
+      logger.info("Polling tick skipped", { reason: "previous sync still running" });
+      return;
+    }
 
-        const usedBytes = await outline.getUsageBytes(user.accessKeyId);
-        const currentPercent = (usedBytes / limitBytes) * 100;
-        const state = getNotificationState(db, user.telegramId);
-        for (const threshold of WARNING_THRESHOLDS) {
-          const crossed = state.lastPercent < threshold && currentPercent >= threshold;
-          if (crossed) {
-            await bot.telegram.sendMessage(user.telegramId, t(user.locale, "warn", { percent: threshold }));
-          }
-        }
-        upsertNotificationState(db, user.telegramId, currentPercent);
-      } catch {
-        // Ignore user-specific errors during polling.
-      }
+    pollInProgress = true;
+    try {
+      await syncOutlineSnapshot(outline, db, logger, config.defaultLocale, bot);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("Polling sync failed", { error: message });
+    } finally {
+      pollInProgress = false;
     }
   }, interval);
 

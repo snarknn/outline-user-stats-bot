@@ -124,10 +124,15 @@ export class OutlineClient {
     return this.request<OutlineAccessKey>(`/access-keys/${accessKeyId}`);
   }
 
+  async getTransferMap(): Promise<Record<string, number>> {
+    const data = await this.request<{ bytesTransferredByUserId: Record<string, number> }>("/metrics/transfer");
+    return data.bytesTransferredByUserId || {};
+  }
+
   async getUsageBytes(accessKeyId: string): Promise<number> {
     try {
-      const data = await this.request<{ bytesTransferredByUserId: Record<string, number> }>("/metrics/transfer");
-      const value = data.bytesTransferredByUserId?.[accessKeyId];
+      const transferMap = await this.getTransferMap();
+      const value = transferMap?.[accessKeyId];
       if (typeof value === "number") return value;
     } catch {
       // Fallback to access key if metrics endpoint is unavailable.

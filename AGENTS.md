@@ -27,17 +27,21 @@ Telegram bot that links a user’s Outline VPN access key to their Telegram acco
 - `ss://` parser supports query suffixes like `?outline=1`
 
 ## Data Model
-- `users`: telegram_id, access_key_id, locale
-- `notification_state`: telegram_id, last_percent
+- `outline_profiles`: outline_id, telegram_id, locale, linked_at
+- `outline_usage`: outline_id, limit_bytes, used_bytes, percent_used, updated_at
 
 ## Behavior Notes
 - `/start`: greeting, command list, and plain-language help details
 - `/help`: explains status output, units, warnings, and the last-30-days moving period
 - `/status`: usage report
+- `/status` reads from local DB cache and shows "as of" update time
 - `/lang ru|en`: set locale
 - Text `ss://...`: link to Outline access key
 - Warnings: start at 50%, then each 10% increment
 - Warnings are triggered on threshold crossing (<50 -> >=50, <60 -> >=60, etc.)
+- At 80%+ warnings include notice that VPN will be unavailable after 100%
+- At >=100% bot sends VPN unavailable message; when usage drops below 100% bot sends availability-restored message
+- Bot refreshes all Outline keys + transfer metrics every polling interval and updates the cache table
 - If no limit is set, `/status` still shows consumed traffic
 - Polling warnings are skipped when no limit is set
 - Locale is auto-detected from Telegram `language_code` on first contact, with fallback to `en` and manual override via `/lang`
