@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/snarknn/outline-user-stats-bot/compare/v1.0.0...v1.1.0) (2026-02-15)
+
+
+### Features
+
+* update README with Docker usage instructions and remove deprecated docker-compose file ([8aa9869](https://github.com/snarknn/outline-user-stats-bot/commit/8aa9869b053e39cd0ca64bb6b1f040d867d6b885))
+
 # 1.0.0 (2026-02-15)
 
 
