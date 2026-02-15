@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/snarknn/outline-user-stats-bot/compare/v1.2.1...v1.2.2) (2026-02-15)
+
+
+### Bug Fixes
+
+* add NODE_TLS_REJECT_UNAUTHORIZED option for self-signed certificates [skip ci] ([acf7cfe](https://github.com/snarknn/outline-user-stats-bot/commit/acf7cfe26e32d391f2f3ac72c41a0bd95d4f92ac))
+
 ## [1.2.1](https://github.com/snarknn/outline-user-stats-bot/compare/v1.2.0...v1.2.1) (2026-02-15)
 
 
