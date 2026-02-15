@@ -112,6 +112,7 @@ services:
 - `CHECK_INTERVAL_MS`
 - `DEFAULT_LOCALE` (default: `en`)
 - `LOG_LEVEL` (`ERROR` | `INFO` | `DEBUG`)
+- `NODE_TLS_REJECT_UNAUTHORIZED` (optional: set to `0` for self-signed Outline certificates)
 
 ## Logging
 
