@@ -74,18 +74,18 @@ docker run --name outline-user-stats-bot \
 
 ```yaml
 services:
-	bot:
-		image: ghcr.io/snarknn/outline-user-stats-bot:latest
-		restart: unless-stopped
-		environment:
-			BOT_TOKEN: ${BOT_TOKEN}
-			OUTLINE_API_URL: ${OUTLINE_API_URL}
-			CHECK_INTERVAL_MS: ${CHECK_INTERVAL_MS:-900000}
-			DEFAULT_LOCALE: ${DEFAULT_LOCALE:-en}
-			LOG_LEVEL: ${LOG_LEVEL:-INFO}
-			NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-}
-		volumes:
-			- ./data:/app/data
+	outline-user-stats-bot:
+    image: ghcr.io/snarknn/outline-user-stats-bot:latest
+    restart: unless-stopped
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      OUTLINE_API_URL: ${OUTLINE_API_URL}
+      CHECK_INTERVAL_MS: ${CHECK_INTERVAL_MS:-900000}
+      DEFAULT_LOCALE: ${DEFAULT_LOCALE:-en}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-}
+    volumes:
+      - ./data:/app/data
 ```
 
 - Compose loads variables from `.env` by default.
