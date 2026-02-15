@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/snarknn/outline-user-stats-bot/compare/v1.1.0...v1.2.0) (2026-02-15)
+
+
+### Features
+
+* enhance release workflow with semantic release and Docker image build ([703c1ec](https://github.com/snarknn/outline-user-stats-bot/commit/703c1ec06fc6ae00d49055b51a63a27d6ed16577))
+
 # [1.1.0](https://github.com/snarknn/outline-user-stats-bot/compare/v1.0.0...v1.1.0) (2026-02-15)
 
 
