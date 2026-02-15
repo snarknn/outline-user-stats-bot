@@ -63,6 +63,7 @@ Telegram bot that links a user’s Outline VPN access key to their Telegram acco
 - CHECK_INTERVAL_MS
 - DEFAULT_LOCALE
 - LOG_LEVEL (`ERROR` | `INFO` | `DEBUG`)
+- NODE_TLS_REJECT_UNAUTHORIZED (set to `0` for self-signed Outline certificates)
 
 ## Deployment
 
@@ -70,6 +71,15 @@ Telegram bot that links a user’s Outline VPN access key to their Telegram acco
 - Docker: `docker compose up -d --build`
 - For Docker, pass required env vars from shell/CI/secret store (`.env` optional)
 - For self-signed Outline TLS certs, set `NODE_TLS_REJECT_UNAUTHORIZED=0` externally (shell or compose env), not in app config
+
+## Release Process
+
+- Releases are created manually via GitHub Actions workflow
+- Go to Actions → Release → Run workflow
+- Semantic-release analyzes commits since last release using Conventional Commits
+- If release is created, Docker image is built and pushed automatically to ghcr.io
+- Commit prefixes that trigger releases: `feat:` (minor), `fix:` (patch), `BREAKING CHANGE:` (major)
+- Prefixes that don't trigger releases: `chore:`, `docs:`, `ci:`, `style:`, `refactor:`, `test:`
 
 ## Logging Notes
 
