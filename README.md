@@ -36,7 +36,7 @@ Telegram bot that shows Outline VPN traffic usage and notifies users when they p
 
 1. Copy `.env.example` to `.env` and fill values (`OUTLINE_API_URL` must include API key in path).
 2. Install dependencies: `npm install`
-3. If Outline uses a self-signed certificate, set `NODE_TLS_REJECT_UNAUTHORIZED=0` before start.
+3. **IMPORTANT**: If Outline uses a self-signed certificate, set `NODE_TLS_REJECT_UNAUTHORIZED=0` before start.
 4. Run in dev: `npm run dev`
 5. Build: `npm run build`
 6. Start: `npm start`
@@ -48,10 +48,48 @@ PowerShell example:
 
 ## Docker
 
-- Docker Compose expects environment variables to be provided externally (shell/CI/secret store); `.env` is optional.
-- For self-signed certs set `NODE_TLS_REJECT_UNAUTHORIZED=0` in environment.
-- To use a custom host folder for the database, set `DATA_DIR` (defaults to `./data`).
-- Build and run: `docker compose up -d --build`
+- Pull the image:
+
+```bash
+docker pull ghcr.io/snarknn/outline-user-stats-bot:latest
+```
+
+- **IMPORTANT**: If Outline uses a self-signed certificate, set `NODE_TLS_REJECT_UNAUTHORIZED=0` in the container environment.
+- Example run:
+
+```bash
+docker run --name outline-user-stats-bot \
+	--restart unless-stopped \
+	-e BOT_TOKEN="$BOT_TOKEN" \
+	-e OUTLINE_API_URL="$OUTLINE_API_URL" \
+	-e CHECK_INTERVAL_MS=900000 \
+	-e DEFAULT_LOCALE=en \
+	-e LOG_LEVEL=INFO \
+	-e NODE_TLS_REJECT_UNAUTHORIZED=0 \
+	-v ./data:/app/data \
+	ghcr.io/snarknn/outline-user-stats-bot:latest
+```
+
+### Docker Compose example
+
+```yaml
+services:
+	bot:
+		image: ghcr.io/snarknn/outline-user-stats-bot:latest
+		restart: unless-stopped
+		environment:
+			BOT_TOKEN: ${BOT_TOKEN}
+			OUTLINE_API_URL: ${OUTLINE_API_URL}
+			CHECK_INTERVAL_MS: ${CHECK_INTERVAL_MS:-900000}
+			DEFAULT_LOCALE: ${DEFAULT_LOCALE:-en}
+			LOG_LEVEL: ${LOG_LEVEL:-INFO}
+			NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-}
+		volumes:
+			- ./data:/app/data
+```
+
+- Compose loads variables from `.env` by default.
+- **IMPORTANT**: Set `NODE_TLS_REJECT_UNAUTHORIZED=0` if Outline uses a self-signed certificate.
 
 ## Commands
 
