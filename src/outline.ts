@@ -2,6 +2,9 @@ export interface OutlineAccessKey {
   id: string;
   name?: string;
   password?: string;
+  port?: number;
+  method?: string;
+  accessUrl?: string;
   dataLimit?: { bytes: number };
 }
 

@@ -28,6 +28,28 @@ export interface LinkedUsageRow {
   limitBytes: number | null;
 }
 
+interface StatusDbRow {
+  outline_id: string;
+  telegram_id: number;
+  locale: string | null;
+  limit_bytes: number | null;
+  used_bytes: number | null;
+  percent_used: number | null;
+  updated_at: string;
+}
+
+interface LinkedUsageDbRow {
+  outline_id: string;
+  telegram_id: number;
+  locale: string | null;
+  percent_used: number | null;
+  limit_bytes: number | null;
+}
+
+interface OutlineProfileIdRow {
+  outline_id: string;
+}
+
 export function initDb(dbPath: string): Database.Database {
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) {
@@ -117,7 +139,8 @@ export function refreshOutlineCache(db: Database.Database, items: OutlineUsageSn
 
 export function getStatusByTelegramId(db: Database.Database, telegramId: number): StatusRow | null {
   const row = db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         u.outline_id AS outline_id,
         p.telegram_id AS telegram_id,
@@ -130,8 +153,9 @@ export function getStatusByTelegramId(db: Database.Database, telegramId: number)
       JOIN outline_usage u ON u.outline_id = p.outline_id
       WHERE p.telegram_id = ?
       LIMIT 1
-    `)
-    .get(telegramId) as any;
+    `
+    )
+    .get(telegramId) as StatusDbRow | undefined;
 
   if (!row) return null;
 
@@ -148,7 +172,8 @@ export function getStatusByTelegramId(db: Database.Database, telegramId: number)
 
 export function listLinkedUsageRows(db: Database.Database): LinkedUsageRow[] {
   const rows = db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         u.outline_id AS outline_id,
         p.telegram_id AS telegram_id,
@@ -158,8 +183,9 @@ export function listLinkedUsageRows(db: Database.Database): LinkedUsageRow[] {
       FROM outline_usage u
       JOIN outline_profiles p ON p.outline_id = u.outline_id
       WHERE p.telegram_id IS NOT NULL
-    `)
-    .all() as any[];
+    `
+    )
+    .all() as LinkedUsageDbRow[];
 
   return rows.map((row) => ({
     outlineId: row.outline_id,
@@ -171,13 +197,22 @@ export function listLinkedUsageRows(db: Database.Database): LinkedUsageRow[] {
 }
 
 export function getProfileByOutlineId(db: Database.Database, outlineId: string): { outlineId: string } | null {
-  const row = db.prepare("SELECT outline_id FROM outline_profiles WHERE outline_id = ?").get(outlineId) as any;
+  const row = db.prepare("SELECT outline_id FROM outline_profiles WHERE outline_id = ?").get(outlineId) as
+    | OutlineProfileIdRow
+    | undefined;
   if (!row) return null;
   return { outlineId: row.outline_id };
 }
 
-export function linkTelegramToOutline(db: Database.Database, outlineId: string, telegramId: number, locale: Locale): void {
-  const clearStmt = db.prepare("UPDATE outline_profiles SET telegram_id = NULL WHERE telegram_id = ? AND outline_id <> ?");
+export function linkTelegramToOutline(
+  db: Database.Database,
+  outlineId: string,
+  telegramId: number,
+  locale: Locale
+): void {
+  const clearStmt = db.prepare(
+    "UPDATE outline_profiles SET telegram_id = NULL WHERE telegram_id = ? AND outline_id <> ?"
+  );
   const upsertStmt = db.prepare(`
     INSERT INTO outline_profiles (outline_id, telegram_id, locale, linked_at)
     VALUES (?, ?, ?, datetime('now'))

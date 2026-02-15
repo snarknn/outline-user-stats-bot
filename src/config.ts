@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-export type Locale = "ru" | "en";
+export type Locale = "en" | "ru" | "zh" | "fa";
 
 export type LogLevel = "ERROR" | "INFO" | "DEBUG";
 
@@ -24,15 +24,20 @@ function getRequired(name: string): string {
 }
 
 export function loadConfig(): AppConfig {
-  const defaultLocale = (process.env.DEFAULT_LOCALE || "ru") as Locale;
+  const defaultLocaleRaw = (process.env.DEFAULT_LOCALE || "en").toLowerCase();
+  const defaultLocale: Locale = isLocale(defaultLocaleRaw) ? defaultLocaleRaw : "en";
   const logLevelRaw = (process.env.LOG_LEVEL || "INFO").toUpperCase();
   const logLevel = logLevelRaw === "DEBUG" || logLevelRaw === "ERROR" ? logLevelRaw : "INFO";
   return {
     botToken: getRequired("BOT_TOKEN"),
     outlineApiUrl: getRequired("OUTLINE_API_URL").replace(/\/$/, ""),
-    dbPath: process.env.DB_PATH || "./data/bot.db",
+    dbPath: "./data/bot.db",
     checkIntervalMs: Number(process.env.CHECK_INTERVAL_MS || 900000),
-    defaultLocale: defaultLocale === "en" ? "en" : "ru",
+    defaultLocale,
     logLevel
   };
+}
+
+function isLocale(value: string): value is Locale {
+  return value === "en" || value === "ru" || value === "zh" || value === "fa";
 }

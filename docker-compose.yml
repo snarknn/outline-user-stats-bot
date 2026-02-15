@@ -1,9 +1,13 @@
 services:
   bot:
     build: .
-    env_file: .env
     environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      OUTLINE_API_URL: ${OUTLINE_API_URL}
+      CHECK_INTERVAL_MS: ${CHECK_INTERVAL_MS:-900000}
+      DEFAULT_LOCALE: ${DEFAULT_LOCALE:-en}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-}
     restart: unless-stopped
     volumes:
-      - ./data:/app/data
+      - ${DATA_DIR:-./data}:/app/data

@@ -31,7 +31,10 @@ function formatBytes(bytes: number): string {
 function detectLocale(langCode?: string): Locale | null {
   if (!langCode) return null;
   const normalized = langCode.toLowerCase();
-  return normalized.startsWith("ru") ? "ru" : "en";
+  if (normalized.startsWith("ru")) return "ru";
+  if (normalized.startsWith("zh")) return "zh";
+  if (normalized.startsWith("fa")) return "fa";
+  return "en";
 }
 
 function resolveLocale(
@@ -207,8 +210,14 @@ async function main(): Promise<void> {
 
   bot.command("lang", async (ctx) => {
     const parts = ctx.message.text.trim().split(/\s+/);
-    const lang = parts[1] as Locale | undefined;
-    const locale = lang === "en" ? "en" : "ru";
+    const requested = parts[1]?.toLowerCase();
+    if (!requested || !isLocale(requested)) {
+      const current = getStatusByTelegramId(db, ctx.from.id);
+      const locale = resolveLocale(ctx.from?.language_code, current?.locale, config.defaultLocale, Boolean(current));
+      await ctx.reply(t(locale, "help"));
+      return;
+    }
+    const locale: Locale = requested;
     const user = getStatusByTelegramId(db, ctx.from.id);
     if (!user) {
       await ctx.reply(t(locale, "statusNoKey"));
@@ -286,6 +295,10 @@ async function main(): Promise<void> {
 
   process.once("SIGINT", () => bot.stop("SIGINT"));
   process.once("SIGTERM", () => bot.stop("SIGTERM"));
+}
+
+function isLocale(value: string): value is Locale {
+  return value === "en" || value === "ru" || value === "zh" || value === "fa";
 }
 
 main().catch((err) => {
