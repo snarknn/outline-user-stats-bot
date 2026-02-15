@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/snarknn/outline-user-stats-bot/compare/v1.2.0...v1.2.1) (2026-02-15)
+
+
+### Bug Fixes
+
+* replace semantic-release command with action in release workflow ([c61fa34](https://github.com/snarknn/outline-user-stats-bot/commit/c61fa3489af5678007f59652fe93ea09e7b5e917))
+
 # [1.2.0](https://github.com/snarknn/outline-user-stats-bot/compare/v1.1.0...v1.2.0) (2026-02-15)
 
 
